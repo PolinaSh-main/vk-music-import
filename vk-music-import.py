@@ -225,6 +225,7 @@ class MainTab(QWidget, MainEnv):
             "total_ok": 0,
             "total_questionable": 0,
             "total_failed": 0,
+            "questionable_by_playlist": {},
         }
         if os.path.exists(fix_relative_path("progress.json")):
             with open(fix_relative_path("progress.json"), "r", encoding="utf-8") as f:
@@ -238,7 +239,7 @@ class MainTab(QWidget, MainEnv):
                                              'Важно: папка и треклисты должны быть те же самые, иначе возможны ошибки.',
                                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
                 if reply == QMessageBox.Yes:
-                    batch = {key: progress[key] for key in batch}
+                    batch = {key: progress.get(key, batch[key]) for key in batch}
                     self.ok_tracks = progress['ok_tracks']
                     self.questionable_tracks = progress['questionable_tracks']
                     self.playlist_response = progress['playlist_response']
@@ -273,6 +274,8 @@ class MainTab(QWidget, MainEnv):
                 batch['total_ok'] += len(self.ok_tracks)
                 batch['total_questionable'] += len(self.questionable_tracks)
                 batch['total_failed'] += len(batch['failed_tracks'])
+                if len(self.questionable_tracks) > 0:
+                    batch['questionable_by_playlist'][os.path.splitext(file_name)[0]] = self.questionable_tracks
                 batch['current_file'] = None
                 self.save_progress_to_file()
         finally:
@@ -290,6 +293,12 @@ class MainTab(QWidget, MainEnv):
                     f"Дата/время: {datetime.now().strftime('%d.%m.%Y %H:%M')}.\n"
                     f"Папка: {tracklist_dir}\n{summary}\n\n"
                     f"ССЫЛКИ:\n\n{playlists_str or '[x]'}\n\n\nОТЧЕТЫ:\n\n{reports_str or '[x]'}\n")
+        questionable_filename = f"Неточные совпадения за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
+        with open(fix_relative_path(questionable_filename), 'w', encoding='utf-8') as f:
+            for playlist_name, tracks in batch['questionable_by_playlist'].items():
+                f.write(f"=== {playlist_name} ({len(tracks)}) ===\n\n")
+                f.write(''.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"\n' for t in tracks) + '\n')
+        self.add_log(f"Список неточных совпадений в текущей папке (\"{questionable_filename}\")")
         self.add_log(summary)
         self.add_log(f"Файл итога сгенерирован в текущей папке (\"{summary_filename}\")")
         self.stop_import()
